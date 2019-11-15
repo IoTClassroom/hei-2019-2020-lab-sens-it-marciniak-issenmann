@@ -19,6 +19,7 @@
 #include "fxos8700.h"
 #include "discovery.h"
 
+
 /******* GLOBAL VARIABLES ******************************************/
 u8 firmware_version[] = "TEMPLATE";
 
@@ -114,19 +115,86 @@ int main()
             /* Clear interrupt */
             pending_interrupt &= ~INTERRUPT_MASK_FXOS8700;
         }
+        
+         /* RTC alarm interrupt handler */
+        if ((pending_interrupt & INTERRUPT_MASK_RTC) == INTERRUPT_MASK_RTC)
+        {
+            /* Do a temperatue & relative humidity measurement */
+            err = HTS221_measure(&(data.temperature), &(data.humidity));
+            if (err != HTS221_ERR_NONE)
+            {
+                ERROR_parser(err);
+            }
+            else
+            {
+                /* Set send flag */
+                send = TRUE;
+            }
 
+            /* Clear interrupt */
+            pending_interrupt &= ~INTERRUPT_MASK_RTC;
+        }
+        
         /* Check if we need to send a message */
         if (send == TRUE)
         {
+            /* Build the payload */
+            DISCOVERY_build_payload(&payload, MODE_TEMPERATURE, &data);
 
             /* Send the message */
-            err = RADIO_API_send_message(RGB_MAGENTA, (u8 *)"HI", 2, FALSE, NULL);
+            err = RADIO_API_send_message(RGB_GREEN, (u8*)&payload, DISCOVERY_PAYLOAD_SIZE, FALSE, NULL);
             /* Parse the error code */
             ERROR_parser(err);
+
+            /* Clear button flag */
+            data.button = FALSE;
 
             /* Clear send flag */
             send = FALSE;
         }
+        
+         /* RTC alarm interrupt handler */
+        if ((pending_interrupt & INTERRUPT_MASK_RTC) == INTERRUPT_MASK_RTC)
+        {
+            /* Active light sensor */
+            LTR329_set_active_mode(LTR329_GAIN_96X);
+            /* Do a brightness measurement */
+            err = LTR329_measure(&(data.brightness), &trash);
+            /* Sensor back in standby mode */
+            LTR329_set_standby_mode();
+
+            if (err != LTR329_ERR_NONE)
+            {
+                ERROR_parser(err);
+            }
+            else
+            {
+                /* Set send flag */
+                send = TRUE;
+            }
+
+            /* Clear interrupt */
+            pending_interrupt &= ~INTERRUPT_MASK_RTC;
+        }
+        
+         /* Check if we need to send a message */
+        if (send == TRUE)
+        {
+            /* Build the payload */
+            DISCOVERY_build_payload(&payload, MODE_LIGHT, &data);
+
+            /* Send the message */
+            err = RADIO_API_send_message(RGB_YELLOW, (u8*)&payload, DISCOVERY_PAYLOAD_SIZE, FALSE, NULL);
+            /* Parse the error code */
+            ERROR_parser(err);
+
+            /* Clear button flag */
+            data.button = FALSE;
+
+            /* Clear send flag */
+            send = FALSE;
+        }
+
 
         /* Check if all interrupt have been clear */
         if (pending_interrupt == 0)
